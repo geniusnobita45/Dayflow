@@ -1,0 +1,34 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>DayFlow • Manual Timetable</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="timetable-container">
+    <h1>📝 Add tasks</h1>
+    <p class="subtitle">Add daily tasks (they repeat daily)</p>
+
+    <form id="manualTimetableForm">
+      <input id="taskName" placeholder="Task name (e.g., Study Physics)" required>
+      <input id="startTime" type="time" required>
+      <input id="endTime" type="time" required>
+      <select id="priority">
+        <option value="high">High</option>
+        <option value="medium">Medium</option>
+        <option value="low">Low</option>
+      </select>
+      <button class="btn" type="submit">Add task</button>
+    </form>
+
+    <div id="taskList" style="margin-top:12px;"></div>
+
+    <div style="margin-top:14px;">
+      <button class="btn" onclick="location.href='{{ url_for('dashboard_page') }}'">Go to Dashboard</button>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

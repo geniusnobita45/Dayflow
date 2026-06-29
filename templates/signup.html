@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>DayFlow • Sign Up</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="auth-card">
+    <h1>🌿 DayFlow</h1>
+    <p class="subtitle">Your calm journey starts here</p>
+
+    <form id="signupForm">
+      <input id="name" placeholder="Full name" required>
+      <input id="email" type="email" placeholder="Email" required>
+      <input id="password" type="password" placeholder="Password" required>
+      <button class="btn" type="submit">Create account</button>
+    </form>
+
+    <p style="margin-top:12px;">Already have an account? <a href="{{ url_for('login_page') }}">Log in</a></p>
+  </div>
+
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

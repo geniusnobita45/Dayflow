@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>DayFlow • Schedule Setup</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="choice-container">
+    <h1>📅 Schedule Setup</h1>
+    <p class="subtitle">Do you have a timetable or want DayFlow to make one?</p>
+
+    <button class="btn" onclick="location.href='{{ url_for('timetable_input_page') }}'">I already have a schedule</button>
+    <button class="btn secondary" onclick="location.href='{{ url_for('timetable_generator_page') }}'">Generate a schedule</button>
+
+    <p style="margin-top:12px;"><a href="{{ url_for('dashboard_page') }}">Skip for now</a></p>
+  </div>
+
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
