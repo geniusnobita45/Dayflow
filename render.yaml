@@ -1,8 +1,9 @@
-services:
+﻿services:
   - type: web
     name: dayflow
     env: python
     rootDir: legacy/flask-prototype
+    runtime: python-3.12.7
     buildCommand: pip install -r requirements.txt
     startCommand: python serve.py
     envVars:
@@ -20,3 +21,4 @@ services:
         sync: false
       - key: GROQ_MODEL
         value: openai/gpt-oss-120b
+
