@@ -7,7 +7,7 @@ import secrets
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask_cors import CORS
 from brain import BrainInputError, BrainProviderError, chat_reply, generate_schedule
 
@@ -94,6 +94,55 @@ def init_db():
             FOREIGN KEY(task_id) REFERENCES tasks(id)
         )
     """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS daily_goals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            category TEXT NOT NULL DEFAULT 'personal',
+            target_value REAL NOT NULL DEFAULT 1,
+            current_value REAL NOT NULL DEFAULT 0,
+            unit TEXT NOT NULL DEFAULT 'task',
+            goal_date TEXT NOT NULL,
+            completed INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS activity_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            activity_type TEXT NOT NULL,
+            value REAL NOT NULL DEFAULT 0,
+            unit TEXT NOT NULL,
+            duration INTEGER NOT NULL DEFAULT 0,
+            calories INTEGER NOT NULL DEFAULT 0,
+            log_date TEXT NOT NULL,
+            notes TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS study_goals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            subject TEXT NOT NULL,
+            chapter TEXT NOT NULL,
+            target_minutes INTEGER NOT NULL DEFAULT 60,
+            studied_minutes INTEGER NOT NULL DEFAULT 0,
+            topics_total INTEGER NOT NULL DEFAULT 1,
+            topics_completed INTEGER NOT NULL DEFAULT 0,
+            due_date TEXT NOT NULL,
+            completed INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+    """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_daily_goals_user_date ON daily_goals(user_id, goal_date)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_activity_logs_user_date ON activity_logs(user_id, log_date)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_study_goals_user_due ON study_goals(user_id, due_date)")
     conn.commit()
     conn.close()
 
@@ -638,6 +687,208 @@ def api_tasks():
         conn.close()
         return jsonify({"status":"ok"})
 
+# ---------- Advanced tracking APIs ----------
+def _number(value, default=0, minimum=0):
+    try:
+        return max(minimum, float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _date(value=None):
+    raw = str(value or datetime.now().strftime("%Y-%m-%d"))
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d").strftime("%Y-%m-%d")
+    except ValueError:
+        return datetime.now().strftime("%Y-%m-%d")
+
+
+@app.route("/api/daily-goals", methods=["GET", "POST", "PUT", "DELETE"])
+def api_daily_goals():
+    uid = session.get("user_id")
+    if not uid:
+        return jsonify({"status": "error", "message": "Not logged in"}), 401
+    data = request.get_json(silent=True) or {}
+    conn = get_conn()
+    c = conn.cursor()
+
+    if request.method == "GET":
+        goal_date = _date(request.args.get("date"))
+        c.execute("SELECT * FROM daily_goals WHERE user_id=? AND goal_date=? ORDER BY completed, id DESC", (uid, goal_date))
+        rows = [dict(row) for row in c.fetchall()]
+        conn.close()
+        return jsonify({"status": "ok", "goals": rows, "date": goal_date})
+
+    if request.method == "POST":
+        title = str(data.get("title", "")).strip()
+        category = str(data.get("category", "personal")).strip().lower()
+        if not title:
+            conn.close()
+            return jsonify({"status": "error", "message": "Give your goal a title."}), 400
+        target = _number(data.get("target_value"), 1, 0.01)
+        current = min(_number(data.get("current_value"), 0), target)
+        unit = str(data.get("unit", "task")).strip()[:24] or "task"
+        goal_date = _date(data.get("goal_date"))
+        completed = int(current >= target)
+        c.execute("INSERT INTO daily_goals (user_id,title,category,target_value,current_value,unit,goal_date,completed) VALUES (?,?,?,?,?,?,?,?)",
+                  (uid, title[:120], category[:24], target, current, unit, goal_date, completed))
+        conn.commit()
+        goal_id = c.lastrowid
+        conn.close()
+        return jsonify({"status": "ok", "id": goal_id})
+
+    goal_id = data.get("id")
+    if not goal_id:
+        conn.close()
+        return jsonify({"status": "error", "message": "Missing goal id."}), 400
+    if request.method == "DELETE":
+        c.execute("DELETE FROM daily_goals WHERE id=? AND user_id=?", (goal_id, uid))
+    else:
+        c.execute("SELECT target_value,current_value FROM daily_goals WHERE id=? AND user_id=?", (goal_id, uid))
+        row = c.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"status": "error", "message": "Goal not found."}), 404
+        current = _number(data.get("current_value"), row["current_value"])
+        if "increment" in data:
+            current = row["current_value"] + _number(data.get("increment"), 0)
+        current = min(current, row["target_value"])
+        completed = int(current >= row["target_value"] or bool(data.get("completed")))
+        if completed:
+            current = row["target_value"]
+        c.execute("UPDATE daily_goals SET current_value=?,completed=? WHERE id=? AND user_id=?", (current, completed, goal_id, uid))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/activities", methods=["GET", "POST", "DELETE"])
+def api_activities():
+    uid = session.get("user_id")
+    if not uid:
+        return jsonify({"status": "error", "message": "Not logged in"}), 401
+    data = request.get_json(silent=True) or {}
+    conn = get_conn()
+    c = conn.cursor()
+    if request.method == "GET":
+        start = (datetime.now() - timedelta(days=29)).strftime("%Y-%m-%d")
+        c.execute("SELECT * FROM activity_logs WHERE user_id=? AND log_date>=? ORDER BY log_date DESC,id DESC", (uid, start))
+        rows = [dict(row) for row in c.fetchall()]
+        conn.close()
+        return jsonify({"status": "ok", "activities": rows})
+    if request.method == "DELETE":
+        c.execute("DELETE FROM activity_logs WHERE id=? AND user_id=?", (data.get("id"), uid))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "ok"})
+    activity_type = str(data.get("activity_type", "workout")).strip().lower()
+    value = _number(data.get("value"), 0)
+    unit = str(data.get("unit", "minutes")).strip()[:20]
+    duration = int(_number(data.get("duration"), 0))
+    calories = int(_number(data.get("calories"), 0))
+    notes = str(data.get("notes", "")).strip()[:240]
+    c.execute("INSERT INTO activity_logs (user_id,activity_type,value,unit,duration,calories,log_date,notes) VALUES (?,?,?,?,?,?,?,?)",
+              (uid, activity_type[:24], value, unit, duration, calories, _date(data.get("log_date")), notes))
+    conn.commit()
+    activity_id = c.lastrowid
+    conn.close()
+    return jsonify({"status": "ok", "id": activity_id})
+
+
+@app.route("/api/study-goals", methods=["GET", "POST", "PUT", "DELETE"])
+def api_study_goals():
+    uid = session.get("user_id")
+    if not uid:
+        return jsonify({"status": "error", "message": "Not logged in"}), 401
+    data = request.get_json(silent=True) or {}
+    conn = get_conn()
+    c = conn.cursor()
+    if request.method == "GET":
+        c.execute("SELECT * FROM study_goals WHERE user_id=? ORDER BY completed,due_date,id DESC", (uid,))
+        rows = [dict(row) for row in c.fetchall()]
+        conn.close()
+        return jsonify({"status": "ok", "goals": rows})
+    if request.method == "POST":
+        subject = str(data.get("subject", "")).strip()
+        chapter = str(data.get("chapter", "")).strip()
+        if not subject or not chapter:
+            conn.close()
+            return jsonify({"status": "error", "message": "Add both subject and chapter."}), 400
+        target = int(_number(data.get("target_minutes"), 60, 1))
+        topics = int(_number(data.get("topics_total"), 1, 1))
+        c.execute("INSERT INTO study_goals (user_id,subject,chapter,target_minutes,topics_total,due_date) VALUES (?,?,?,?,?,?)",
+                  (uid, subject[:80], chapter[:120], target, topics, _date(data.get("due_date"))))
+        conn.commit()
+        item_id = c.lastrowid
+        conn.close()
+        return jsonify({"status": "ok", "id": item_id})
+    item_id = data.get("id")
+    if request.method == "DELETE":
+        c.execute("DELETE FROM study_goals WHERE id=? AND user_id=?", (item_id, uid))
+    else:
+        c.execute("SELECT * FROM study_goals WHERE id=? AND user_id=?", (item_id, uid))
+        row = c.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"status": "error", "message": "Study goal not found."}), 404
+        minutes = min(row["target_minutes"], row["studied_minutes"] + int(_number(data.get("minutes"), 0)))
+        topics = min(row["topics_total"], row["topics_completed"] + int(_number(data.get("topics"), 0)))
+        completed = int((minutes >= row["target_minutes"] and topics >= row["topics_total"]) or bool(data.get("completed")))
+        if completed:
+            minutes, topics = row["target_minutes"], row["topics_total"]
+        c.execute("UPDATE study_goals SET studied_minutes=?,topics_completed=?,completed=? WHERE id=? AND user_id=?", (minutes, topics, completed, item_id, uid))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/dashboard-summary", methods=["GET"])
+def api_dashboard_summary():
+    uid = session.get("user_id")
+    if not uid:
+        return jsonify({"status": "error", "message": "Not logged in"}), 401
+    today = datetime.now().date()
+    start = today - timedelta(days=6)
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("SELECT * FROM daily_goals WHERE user_id=? AND goal_date>=? AND goal_date<=? ORDER BY goal_date,id", (uid, str(start), str(today)))
+    goals = [dict(row) for row in c.fetchall()]
+    c.execute("SELECT * FROM activity_logs WHERE user_id=? AND log_date>=? AND log_date<=? ORDER BY log_date,id", (uid, str(start), str(today)))
+    activities = [dict(row) for row in c.fetchall()]
+    c.execute("SELECT * FROM study_goals WHERE user_id=? ORDER BY completed,due_date LIMIT 8", (uid,))
+    study = [dict(row) for row in c.fetchall()]
+    conn.close()
+
+    history = []
+    streak = 0
+    for offset in range(7):
+        day = start + timedelta(days=offset)
+        day_goals = [g for g in goals if g["goal_date"] == str(day)]
+        completed = sum(int(g["completed"]) for g in day_goals)
+        history.append({"date": str(day), "label": day.strftime("%a")[0], "total": len(day_goals), "completed": completed,
+                        "percent": round(completed / len(day_goals) * 100) if day_goals else 0})
+    for offset in range(30):
+        day = today - timedelta(days=offset)
+        day_goals = [g for g in goals if g["goal_date"] == str(day)]
+        if day_goals and all(g["completed"] for g in day_goals):
+            streak += 1
+        else:
+            break
+
+    today_activities = [a for a in activities if a["log_date"] == str(today)]
+    def activity_sum(kind, field="value"):
+        return sum(float(a[field] or 0) for a in today_activities if a["activity_type"] == kind)
+    summary = {
+        "steps": round(activity_sum("steps")),
+        "calories": round(sum(float(a["calories"] or 0) for a in today_activities)),
+        "distance": round(activity_sum("running") + activity_sum("walking") + activity_sum("cycling"), 2),
+        "active_minutes": round(sum(float(a["duration"] or 0) for a in today_activities)),
+        "study_minutes": round(sum(float(s["studied_minutes"] or 0) for s in study if not s["completed"])),
+        "streak": streak,
+    }
+    return jsonify({"status": "ok", "today": str(today), "goals": [g for g in goals if g["goal_date"] == str(today)],
+                    "activities": today_activities, "study": study, "history": history, "summary": summary})
+
 # Quick utility route to wipe all data for the current user (for testing)
 @app.route("/api/reset_user", methods=["POST"])
 def api_reset_user():
@@ -648,6 +899,9 @@ def api_reset_user():
     c = conn.cursor()
     c.execute("DELETE FROM tasks WHERE user_id=?", (uid,))
     c.execute("DELETE FROM goals WHERE user_id=?", (uid,))
+    c.execute("DELETE FROM daily_goals WHERE user_id=?", (uid,))
+    c.execute("DELETE FROM activity_logs WHERE user_id=?", (uid,))
+    c.execute("DELETE FROM study_goals WHERE user_id=?", (uid,))
     conn.commit()
     conn.close()
     return jsonify({"status":"ok"})

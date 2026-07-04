@@ -1,43 +1,152 @@
-﻿<!doctype html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>DayFlow - Dashboard</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#101d17">
+  <title>DayFlow — Your daily command center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
 </head>
 <body>
-  <main class="container card dashboard-panel">
-    <header>
-      <h1 id="greeting">Good Morning</h1>
-      <p class="subtitle" id="userGoal">Your goal: -</p>
-    </header>
-
-    <section>
-      <h2>Today's Tasks</h2>
-      <div id="taskList"></div>
-    </section>
-
-    <section class="dashboard-section">
-      <h2>Reminders</h2>
-      <form id="reminderForm" class="compact-form">
-        <input id="reminderTitle" placeholder="Reminder title" required>
-        <input id="reminderTime" type="time" required>
-        <button class="btn" type="submit">Create reminder</button>
-      </form>
-      <div id="reminderList" class="reminder-list"></div>
-    </section>
-
-    <section class="dashboard-section">
-      <h2>Streak</h2>
-      <p id="streakValue">0 days</p>
-      <div class="nav-actions">
-        <button class="btn" onclick="location.href='{{ url_for('settings_page') }}'">Settings</button>
-        <button class="btn secondary" onclick="location.href='{{ url_for('timetable_generator_page') }}'">Generate schedule</button>
-        <button class="btn logout" id="logoutBtn">Logout</button>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="/dashboard" aria-label="DayFlow home"><span class="brand-mark">D</span><span>dayflow</span></a>
+      <nav class="primary-nav" aria-label="Main navigation">
+        <a class="nav-item active" href="#overview"><span>⌂</span>Overview</a>
+        <a class="nav-item" href="#daily-goals"><span>◎</span>Daily goals</a>
+        <a class="nav-item" href="#activity"><span>↗</span>Activity</a>
+        <a class="nav-item" href="#study"><span>▤</span>Study</a>
+        <a class="nav-item" href="#history"><span>◷</span>History</a>
+      </nav>
+      <div class="sidebar-card">
+        <div class="mini-orbit">✦</div>
+        <strong>Build your momentum</strong>
+        <p>Small wins, repeated daily, become remarkable results.</p>
       </div>
-    </section>
-  </main>
+      <div class="sidebar-bottom">
+        <a href="/settings">⚙ <span>Settings</span></a>
+        <button id="logoutBtn" type="button">↪ <span>Log out</span></button>
+      </div>
+    </aside>
 
-  <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <main class="dashboard-main">
+      <header class="topbar">
+        <button class="mobile-menu" id="menuBtn" aria-label="Open menu">☰</button>
+        <div>
+          <p class="eyebrow" id="todayLabel">YOUR DAY</p>
+          <h1 id="greeting">Good morning</h1>
+          <p class="header-subtitle">Let’s turn today into measurable progress.</p>
+        </div>
+        <div class="topbar-actions">
+          <button class="icon-button" type="button" aria-label="Notifications">♢<span class="notification-dot"></span></button>
+          <button class="profile-button" type="button"><span class="avatar" id="userAvatar">Y</span><span class="profile-copy"><b id="profileName">You</b><small>Goal getter</small></span><span>⌄</span></button>
+        </div>
+      </header>
+
+      <div class="dashboard-content" id="overview">
+        <section class="hero-card">
+          <div class="hero-copy">
+            <span class="status-pill">TODAY'S MOMENTUM</span>
+            <h2><span id="heroCompleted">0</span> of <span id="heroTotal">0</span> goals done</h2>
+            <p id="heroMessage">Add your first goal and make today count.</p>
+            <button class="button light" data-open-modal="goalModal">＋ Add today’s goal</button>
+          </div>
+          <div class="progress-orbit" id="progressOrbit" style="--progress:0">
+            <div><strong id="overallPercent">0%</strong><span>complete</span></div>
+          </div>
+          <div class="hero-glow glow-one"></div><div class="hero-glow glow-two"></div>
+        </section>
+
+        <section class="stat-grid" aria-label="Today at a glance">
+          <article class="stat-card steps"><div class="stat-icon">◈</div><div><span>Steps</span><strong id="stepsValue">0</strong><small id="stepsHint">of 10,000 today</small></div></article>
+          <article class="stat-card calories"><div class="stat-icon">♨</div><div><span>Calories burned</span><strong id="caloriesValue">0 <em>kcal</em></strong><small>from logged activity</small></div></article>
+          <article class="stat-card distance"><div class="stat-icon">⌁</div><div><span>Distance</span><strong id="distanceValue">0 <em>km</em></strong><small>walk, run & cycle</small></div></article>
+          <article class="stat-card focus"><div class="stat-icon">◷</div><div><span>Active time</span><strong id="activeValue">0 <em>min</em></strong><small>keep your body moving</small></div></article>
+        </section>
+
+        <div class="dashboard-grid">
+          <section class="panel goals-panel" id="daily-goals">
+            <div class="panel-heading">
+              <div><span class="section-kicker">TODAY</span><h2>Daily goals</h2></div>
+              <button class="text-button" data-open-modal="goalModal">＋ Add goal</button>
+            </div>
+            <div class="goal-list" id="goalList"><div class="skeleton tall"></div><div class="skeleton tall"></div></div>
+          </section>
+
+          <section class="panel history-panel" id="history">
+            <div class="panel-heading">
+              <div><span class="section-kicker">CONSISTENCY</span><h2>7-day rhythm</h2></div>
+              <div class="streak-badge">🔥 <strong id="streakValue">0</strong> day streak</div>
+            </div>
+            <div class="history-chart" id="historyChart"></div>
+            <div class="history-note"><span>✦</span><p><strong id="historyTitle">Your story starts today</strong><small id="historyText">Complete every goal to protect your streak.</small></p></div>
+          </section>
+        </div>
+
+        <section class="panel activity-panel" id="activity">
+          <div class="panel-heading">
+            <div><span class="section-kicker">BODY</span><h2>Activity tracker</h2><p>Log every kind of movement—because it all counts.</p></div>
+            <button class="button dark" data-open-modal="activityModal">＋ Log activity</button>
+          </div>
+          <div class="quick-activities">
+            <button data-quick-activity="steps"><span class="quick-icon mint">◈</span><b>Steps</b><small>Track your daily walk</small><i>＋</i></button>
+            <button data-quick-activity="running"><span class="quick-icon orange">↗</span><b>Running</b><small>Distance and pace</small><i>＋</i></button>
+            <button data-quick-activity="workout"><span class="quick-icon purple">⌁</span><b>Gym / workout</b><small>Time and calories</small><i>＋</i></button>
+            <button data-quick-activity="cycling"><span class="quick-icon blue">∞</span><b>Cycling</b><small>Distance and time</small><i>＋</i></button>
+          </div>
+          <div class="activity-feed" id="activityFeed"></div>
+        </section>
+
+        <section class="panel study-panel" id="study">
+          <div class="panel-heading">
+            <div><span class="section-kicker">MIND</span><h2>Study goals</h2><p>Plan by subject and chapter, then record focused sessions.</p></div>
+            <button class="button outline" data-open-modal="studyModal">＋ Add chapter</button>
+          </div>
+          <div class="study-list" id="studyList"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <dialog class="modal" id="goalModal">
+    <form method="dialog" class="modal-card" id="goalForm">
+      <button class="modal-close" value="cancel" aria-label="Close">×</button>
+      <span class="section-kicker">PLAN THE WIN</span><h2>Add a daily goal</h2><p>Choose something measurable you can finish today.</p>
+      <label>Goal name<input id="goalTitle" maxlength="120" placeholder="e.g. Read 30 pages" required></label>
+      <div class="form-row"><label>Category<select id="goalCategory"><option value="personal">Personal</option><option value="fitness">Fitness</option><option value="study">Study</option><option value="wellness">Wellness</option><option value="work">Work</option></select></label><label>Date<input id="goalDate" type="date" required></label></div>
+      <div class="form-row"><label>Target<input id="goalTarget" type="number" min="0.01" step="0.01" value="1" required></label><label>Unit<input id="goalUnit" value="task" placeholder="pages, km, minutes"></label></div>
+      <button class="button primary full" type="submit" value="default">Create goal</button>
+    </form>
+  </dialog>
+
+  <dialog class="modal" id="activityModal">
+    <form method="dialog" class="modal-card" id="activityForm">
+      <button class="modal-close" value="cancel" aria-label="Close">×</button>
+      <span class="section-kicker">MOVE & RECORD</span><h2>Log activity</h2><p>Add steps, a run, gym work, sports, yoga, or anything active.</p>
+      <div class="form-row"><label>Activity<select id="activityType"><option value="steps">Steps</option><option value="running">Running</option><option value="walking">Walking</option><option value="workout">Gym / workout</option><option value="cycling">Cycling</option><option value="swimming">Swimming</option><option value="yoga">Yoga</option><option value="sports">Sports</option></select></label><label>Date<input id="activityDate" type="date" required></label></div>
+      <div class="form-row"><label>Amount<input id="activityValue" type="number" min="0" step="0.01" value="0"></label><label>Unit<select id="activityUnit"><option value="steps">steps</option><option value="km">km</option><option value="sets">sets</option><option value="minutes">minutes</option></select></label></div>
+      <div class="form-row"><label>Duration (minutes)<input id="activityDuration" type="number" min="0" value="0"></label><label>Calories burned<input id="activityCalories" type="number" min="0" value="0"></label></div>
+      <label>Notes (optional)<input id="activityNotes" maxlength="240" placeholder="Morning run, leg day, football..."></label>
+      <button class="button primary full" type="submit" value="default">Save activity</button>
+    </form>
+  </dialog>
+
+  <dialog class="modal" id="studyModal">
+    <form method="dialog" class="modal-card" id="studyForm">
+      <button class="modal-close" value="cancel" aria-label="Close">×</button>
+      <span class="section-kicker">LEARN WITH INTENT</span><h2>Add a chapter goal</h2><p>Break the syllabus into focused, finishable pieces.</p>
+      <div class="form-row"><label>Subject<input id="studySubject" maxlength="80" placeholder="Physics" required></label><label>Due date<input id="studyDue" type="date" required></label></div>
+      <label>Chapter or unit<input id="studyChapter" maxlength="120" placeholder="Chapter 4 — Thermodynamics" required></label>
+      <div class="form-row"><label>Focus target (minutes)<input id="studyMinutes" type="number" min="1" value="90" required></label><label>Topics in chapter<input id="studyTopics" type="number" min="1" value="5" required></label></div>
+      <button class="button primary full" type="submit" value="default">Add study goal</button>
+    </form>
+  </dialog>
+
+  <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
 </body>
 </html>
