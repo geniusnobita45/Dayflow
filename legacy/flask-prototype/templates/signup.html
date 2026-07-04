@@ -10,6 +10,10 @@
     <h1>🌿 DayFlow</h1>
     <p class="subtitle">Your calm journey starts here</p>
 
+    {% if request.args.get('error') %}<p class="auth-error">{{ request.args.get('error') }}</p>{% endif %}
+    <a class="google-btn" href="{{ url_for('google_login') }}">Continue with Google</a>
+    <div class="auth-divider"><span>or</span></div>
+
     <form id="signupForm">
       <input id="name" placeholder="Full name" required>
       <input id="email" type="email" placeholder="Email" required>

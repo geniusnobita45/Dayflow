@@ -10,6 +10,10 @@
     <h1>Welcome back</h1>
     <p class="subtitle">Continue your DayFlow</p>
 
+    {% if request.args.get('error') %}<p class="auth-error">{{ request.args.get('error') }}</p>{% endif %}
+    <a class="google-btn" href="{{ url_for('google_login') }}">Continue with Google</a>
+    <div class="auth-divider"><span>or</span></div>
+
     <form id="loginForm">
       <input id="loginEmail" type="email" placeholder="Email" required>
       <input id="loginPassword" type="password" placeholder="Password" required>

@@ -1,0 +1,6 @@
+legacy/flask-prototype/__pycache__/
+legacy/flask-prototype/*.db
+legacy/flask-prototype/*.db-journal
+legacy/flask-prototype/*.db.backup-*
+legacy/flask-prototype/*.db-journal.backup-*
+legacy/flask-prototype/*.log

@@ -1,0 +1,72 @@
+﻿<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>DayFlow - Smart schedule</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main class="timetable-container wide-panel">
+    <h1>Smart schedule builder</h1>
+    <p class="subtitle">Plan the day around your goal, fixed commitments, and basic needs.</p>
+
+    <form id="generateForm">
+      <div class="form-grid two-columns">
+        <div>
+          <label for="wakeTime">Wake time</label>
+          <input id="wakeTime" type="time" required>
+        </div>
+        <div>
+          <label for="sleepTime">Sleep time</label>
+          <input id="sleepTime" type="time" required>
+        </div>
+      </div>
+
+      <div class="routine-box">
+        <label class="inline-check" for="includeBasics">
+          <input id="includeBasics" type="checkbox" checked>
+          Include basic daily routine
+        </label>
+
+        <div class="form-grid two-columns">
+          <div>
+            <label for="breakfastTime">Breakfast</label>
+            <input id="breakfastTime" type="time">
+          </div>
+          <div>
+            <label for="lunchTime">Lunch</label>
+            <input id="lunchTime" type="time">
+          </div>
+          <div>
+            <label for="dinnerTime">Dinner</label>
+            <input id="dinnerTime" type="time">
+          </div>
+          <div>
+            <label for="movementTime">Movement</label>
+            <input id="movementTime" type="time">
+          </div>
+        </div>
+      </div>
+
+      <label for="scheduleConstraints">Fixed commitments</label>
+      <textarea id="scheduleConstraints" maxlength="700" rows="4" placeholder="College 09:00-15:00; commute 08:30-09:00"></textarea>
+
+      <button class="btn" id="generateButton" type="submit">Generate smart schedule</button>
+    </form>
+
+    <div id="clarificationPanel" class="clarification-panel" hidden>
+      <strong>Need details first</strong>
+      <ul id="clarificationQuestions"></ul>
+    </div>
+
+    <p id="generatorStatus" class="generator-status" role="status"></p>
+    <div id="generatedSchedule" class="generated-schedule"></div>
+
+    <div class="nav-actions">
+      <button class="btn secondary" onclick="location.href='{{ url_for('dashboard_page') }}'">Go to Dashboard</button>
+    </div>
+  </main>
+
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

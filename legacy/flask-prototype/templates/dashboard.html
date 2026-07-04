@@ -1,0 +1,43 @@
+﻿<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>DayFlow - Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main class="container card dashboard-panel">
+    <header>
+      <h1 id="greeting">Good Morning</h1>
+      <p class="subtitle" id="userGoal">Your goal: -</p>
+    </header>
+
+    <section>
+      <h2>Today's Tasks</h2>
+      <div id="taskList"></div>
+    </section>
+
+    <section class="dashboard-section">
+      <h2>Reminders</h2>
+      <form id="reminderForm" class="compact-form">
+        <input id="reminderTitle" placeholder="Reminder title" required>
+        <input id="reminderTime" type="time" required>
+        <button class="btn" type="submit">Create reminder</button>
+      </form>
+      <div id="reminderList" class="reminder-list"></div>
+    </section>
+
+    <section class="dashboard-section">
+      <h2>Streak</h2>
+      <p id="streakValue">0 days</p>
+      <div class="nav-actions">
+        <button class="btn" onclick="location.href='{{ url_for('settings_page') }}'">Settings</button>
+        <button class="btn secondary" onclick="location.href='{{ url_for('timetable_generator_page') }}'">Generate schedule</button>
+        <button class="btn logout" id="logoutBtn">Logout</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

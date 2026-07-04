@@ -1,0 +1,74 @@
+/* calm theme: lightweight */
+:root {
+  --bg1:#E8F5E9; --bg2:#E3F2FD; --card:#FFFFFF; --accent:#26A69A; --muted:#607D8B; --text:#263238;
+}
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Poppins',sans-serif}
+body{background:linear-gradient(160deg,var(--bg1),var(--bg2));min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;color:var(--text)}
+.card,.auth-card,.goal-container,.choice-container,.timetable-container,.settings-container{background:var(--card);border-radius:14px;padding:22px;box-shadow:0 10px 30px rgba(0,0,0,0.08);width:100%;max-width:420px}
+h1{color:#1565C0;margin-bottom:8px}
+.subtitle{color:var(--muted);font-size:0.95rem;margin-bottom:14px}
+input,select,textarea,button{width:100%;padding:10px 12px;border-radius:10px;border:1px solid #CFD8DC;margin-top:8px}
+textarea{resize:vertical;min-height:92px;color:var(--text)}
+label{display:block;margin-top:12px;font-size:.9rem;font-weight:600}
+button{background:var(--accent);color:#fff;border:none;cursor:pointer;font-weight:600}
+button:disabled{cursor:wait;opacity:.7}
+button.secondary{background:#81C784}
+button.logout{background:#EF5350}
+a.linkish{color:var(--accent);text-decoration:none}
+.google-btn{display:flex;align-items:center;justify-content:center;width:100%;padding:10px 12px;border-radius:10px;border:1px solid #CFD8DC;margin-top:8px;background:#fff;color:var(--text);text-decoration:none;font-weight:600}
+.google-btn::before{content:"G";display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;margin-right:8px;border:1px solid #CFD8DC;color:#1565C0;background:#FAFAFA;font-weight:700}
+.auth-divider{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:0.85rem;margin:14px 0 6px}
+.auth-divider::before,.auth-divider::after{content:"";height:1px;background:#CFD8DC;flex:1}
+.auth-error{background:#FFEBEE;color:#B71C1C;border:1px solid #FFCDD2;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:0.9rem}
+#taskList div{background:#FAFAFA;padding:10px;border-left:6px solid var(--accent);border-radius:8px;margin:8px 0}
+.empty-state p{margin-bottom:8px;color:var(--muted)}
+.generator-status{min-height:22px;margin-top:14px;color:var(--muted);font-size:.9rem}
+.generator-status.success{color:#2E7D32}
+.generator-status.error{color:#C62828}
+.generated-schedule{display:grid;gap:8px;margin-top:10px}
+.generated-task{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#FAFAFA;border-left:4px solid var(--accent);padding:10px 12px;border-radius:8px}
+.generated-task div{display:grid;gap:3px}
+.generated-task span{color:var(--muted);font-size:.82rem}
+.generated-task .priority{color:#fff;border-radius:999px;padding:3px 8px;text-transform:capitalize;white-space:nowrap}
+.priority.high{background:#C62828}
+.priority.medium{background:#1565C0}
+.priority.low{background:#2E7D32}@media(max-width:500px){body{padding:12px}}
+.wide-panel,.dashboard-panel{max-width:720px}
+.dashboard-panel{align-self:flex-start;margin:24px auto}
+.form-grid{display:grid;gap:12px}
+.two-columns{grid-template-columns:repeat(2,minmax(0,1fr))}
+.routine-box{margin-top:14px;padding:12px;border:1px solid #E0E7EA;border-radius:10px;background:#FAFCFC}
+.inline-check{display:flex;align-items:center;gap:10px;margin-top:0}
+.inline-check input{width:auto;margin:0}
+.nav-actions{display:grid;gap:8px;margin-top:12px}
+.dashboard-section{margin-top:18px}
+.compact-form{display:grid;grid-template-columns:1fr 150px 160px;gap:8px;align-items:end}
+.compact-form input,.compact-form button{margin-top:0}
+.clarification-panel{margin-top:14px;border:1px solid #FFCC80;background:#FFF8E1;color:#5D4037;border-radius:10px;padding:12px}
+.clarification-panel ul{margin:8px 0 0 18px}
+.task-badges{display:flex!important;grid-template-columns:none!important;align-items:center;gap:6px}
+.kind-pill{background:#ECEFF1;color:#455A64;border-radius:999px;padding:3px 8px;text-transform:capitalize;white-space:nowrap;font-size:.82rem}
+.generated-task.fixed{border-left-color:#7E57C2}
+.generated-task.routine{border-left-color:#26A69A}
+.generated-task.focus{border-left-color:#1565C0}
+.task-meta{display:block;color:var(--muted);font-size:.85rem;margin-top:4px}
+.reminder-list{display:grid;gap:8px;margin-top:10px}
+.reminder-row{display:flex;justify-content:space-between;align-items:center;gap:10px;background:#FAFAFA;border-left:4px solid #26A69A;border-radius:8px;padding:10px}
+.reminder-row span{display:block;color:var(--muted);font-size:.85rem;margin-top:3px}
+.muted-row{opacity:.65}
+.reminder-actions{display:flex;gap:6px;flex-shrink:0}
+.reminder-actions button{width:auto;margin-top:0;padding:7px 10px;border-radius:8px;font-size:.82rem;background:#1565C0}
+.reminder-actions .danger-light{background:#EF5350}
+.chat-widget{position:fixed;right:20px;bottom:20px;z-index:30}
+.chat-toggle{width:auto;min-width:76px;border-radius:999px;box-shadow:0 8px 24px rgba(38,166,154,.35)}
+.chat-panel{position:absolute;right:0;bottom:56px;width:min(340px,calc(100vw - 32px));background:#fff;border:1px solid #CFD8DC;border-radius:12px;box-shadow:0 16px 40px rgba(0,0,0,.18);overflow:hidden}
+.chat-header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #ECEFF1}
+.chat-header button{width:auto;margin:0;padding:4px 8px;background:#ECEFF1;color:#263238}
+.chat-log{height:260px;overflow:auto;padding:12px;display:grid;align-content:start;gap:8px;background:#FAFCFC}
+.chat-message{max-width:88%;padding:8px 10px;border-radius:10px;font-size:.9rem;line-height:1.35}
+.chat-message.user{justify-self:end;background:#1565C0;color:#fff}
+.chat-message.assistant{justify-self:start;background:#ECEFF1;color:#263238}
+.chat-form{display:grid;grid-template-columns:1fr 78px;gap:8px;padding:10px;border-top:1px solid #ECEFF1;background:#fff}
+.chat-form input,.chat-form button{margin-top:0}
+.chat-form button{padding:10px}
+@media(max-width:640px){.two-columns,.compact-form{grid-template-columns:1fr}.reminder-row{align-items:flex-start;flex-direction:column}.reminder-actions{width:100%}.reminder-actions button{flex:1}.chat-widget{right:12px;bottom:12px}}
