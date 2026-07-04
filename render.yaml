@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: dayflow
+    env: python
+    rootDir: legacy/flask-prototype
+    buildCommand: pip install -r requirements.txt
+    startCommand: python serve.py
+    envVars:
+      - key: DAYFLOW_SECRET_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+      - key: DAYFLOW_DB_PATH
+        value: /opt/render/project/src/dayflow_runtime.db
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
