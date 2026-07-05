@@ -40,7 +40,7 @@ async function loadUser(){
 async function loadDashboard(quiet=false){
   try{
     const result=await api('/api/dashboard-summary'); dashboardState=result;
-    renderHero(); renderStats(); renderGoals(); renderHistory(); renderActivities(); renderStudy();
+    renderHero(); renderStats(); renderTracker(); renderGoals(); renderHistory(); renderActivities(); renderStudy();
   }catch(error){ if(!quiet) showToast(error.message || 'Could not load your dashboard.'); }
 }
 function renderHero(){
@@ -55,6 +55,19 @@ function renderStats(){
   $('#stepsValue').textContent=number(s.steps); $('#caloriesValue').innerHTML=`${number(s.calories)} <em>kcal</em>`;
   $('#distanceValue').innerHTML=`${number(s.distance,2)} <em>km</em>`; $('#activeValue').innerHTML=`${number(s.active_minutes)} <em>min</em>`;
   $('#stepsHint').textContent=`${Math.min(100,Math.round((s.steps||0)/10000*100))}% of 10,000 today`;
+}
+function renderTracker(){
+  const tracker=dashboardState.tracker || {};
+  const connect=$('#fitbitConnectBtn'), sync=$('#fitbitSyncBtn'), disconnect=$('#fitbitDisconnectBtn'), status=$('#trackerStatus');
+  if(tracker.connected){
+    connect.hidden=true; sync.hidden=false; disconnect.hidden=false;
+    const last=tracker.last_synced_at ? new Date(`${tracker.last_synced_at.replace(' ','T')}Z`) : null;
+    const when=last && !Number.isNaN(last.getTime()) ? last.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) : 'recently';
+    status.textContent=`Fitbit connected · automatically synced ${when}`; status.classList.add('tracker-connected');
+  }else{
+    connect.hidden=false; sync.hidden=true; disconnect.hidden=true;
+    status.textContent='Connect a wearable for automatic tracking, or log activity manually.'; status.classList.remove('tracker-connected');
+  }
 }
 function renderGoals(){
   const list=$('#goalList'); const goals=dashboardState.goals || [];
@@ -130,8 +143,23 @@ $$('[data-quick-activity]').forEach(button=>button.addEventListener('click',()=>
   const unit=type==='steps'?'steps':type==='workout'?'sets':'km'; $('#activityUnit').value=unit; openModal('activityModal');
 }));
 $('#activityType').addEventListener('change',event=>{ const type=event.target.value; $('#activityUnit').value=type==='steps'?'steps':['running','walking','cycling','swimming'].includes(type)?'km':'minutes'; });
+$('#fitbitSyncBtn').addEventListener('click',async()=>{
+  const button=$('#fitbitSyncBtn'); button.disabled=true; button.textContent='Syncing…';
+  try{ await api('/api/fitbit/sync','POST'); showToast('Fitbit data synced.'); await loadDashboard(true); }
+  catch(error){ showToast(error.message || 'Fitbit sync failed.'); }
+  finally{ button.disabled=false; button.textContent='↻ Sync Fitbit'; }
+});
+$('#fitbitDisconnectBtn').addEventListener('click',async()=>{
+  if(!confirm('Disconnect Fitbit and remove its synced data from DayFlow?')) return;
+  try{ await api('/api/fitbit/disconnect','DELETE'); showToast('Fitbit disconnected.'); await loadDashboard(true); }
+  catch(error){ showToast(error.message || 'Could not disconnect Fitbit.'); }
+});
 $('#logoutBtn').addEventListener('click',async()=>{ await api('/api/logout','POST'); location.href='/login'; });
 $('#menuBtn').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
 $$('.nav-item').forEach(item=>item.addEventListener('click',()=>{ $$('.nav-item').forEach(link=>link.classList.remove('active')); item.classList.add('active'); $('#sidebar').classList.remove('open'); }));
 
+const trackerParams=new URLSearchParams(location.search);
+if(trackerParams.get('tracker')==='connected') showToast('Fitbit connected and syncing automatically.');
+if(trackerParams.get('tracker_error')) showToast(trackerParams.get('tracker_error'));
+if(trackerParams.has('tracker') || trackerParams.has('tracker_error')) history.replaceState({},'',location.pathname);
 loadUser(); loadDashboard();

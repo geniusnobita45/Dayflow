@@ -88,8 +88,13 @@
 
         <section class="panel activity-panel" id="activity">
           <div class="panel-heading">
-            <div><span class="section-kicker">BODY</span><h2>Activity tracker</h2><p>Log every kind of movement—because it all counts.</p></div>
-            <button class="button dark" data-open-modal="activityModal">＋ Log activity</button>
+            <div><span class="section-kicker">BODY</span><h2>Activity tracker</h2><p id="trackerStatus">Connect a wearable for automatic tracking, or log activity manually.</p></div>
+            <div class="activity-heading-actions">
+              <a class="button fitbit-button" id="fitbitConnectBtn" href="/auth/fitbit">◇ Connect Fitbit</a>
+              <button class="button fitbit-button" id="fitbitSyncBtn" type="button" hidden>↻ Sync Fitbit</button>
+              <button class="tracker-disconnect" id="fitbitDisconnectBtn" type="button" hidden>Disconnect</button>
+              <button class="button dark" data-open-modal="activityModal">＋ Log manually</button>
+            </div>
           </div>
           <div class="quick-activities">
             <button data-quick-activity="steps"><span class="quick-icon mint">◈</span><b>Steps</b><small>Track your daily walk</small><i>＋</i></button>

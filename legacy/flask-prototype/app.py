@@ -4,11 +4,15 @@ import os
 import tempfile
 import json
 import secrets
+import base64
+import hashlib
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta
 from flask_cors import CORS
+from cryptography.fernet import Fernet, InvalidToken
 from brain import BrainInputError, BrainProviderError, chat_reply, generate_schedule
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -20,7 +24,7 @@ CORS(app, support_credentials=True)
 
 @app.after_request
 def add_build_header(response):
-    response.headers["X-DayFlow-Build"] = "brain-2"
+    response.headers["X-DayFlow-Build"] = "tracker-3"
     return response
 
 # ---------- DB helpers ----------
@@ -137,6 +141,38 @@ def init_db():
             due_date TEXT NOT NULL,
             completed INTEGER NOT NULL DEFAULT 0,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS tracker_connections (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            provider TEXT NOT NULL,
+            provider_user_id TEXT,
+            access_token TEXT NOT NULL,
+            refresh_token TEXT NOT NULL,
+            expires_at INTEGER NOT NULL DEFAULT 0,
+            scope TEXT,
+            last_synced_at TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, provider),
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS tracker_daily_metrics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            provider TEXT NOT NULL,
+            metric_date TEXT NOT NULL,
+            steps INTEGER NOT NULL DEFAULT 0,
+            distance REAL NOT NULL DEFAULT 0,
+            calories INTEGER NOT NULL DEFAULT 0,
+            active_minutes INTEGER NOT NULL DEFAULT 0,
+            synced_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, provider, metric_date),
             FOREIGN KEY(user_id) REFERENCES users(id)
         )
     """)
@@ -687,6 +723,237 @@ def api_tasks():
         conn.close()
         return jsonify({"status":"ok"})
 
+# ---------- Fitbit connection and automatic sync ----------
+def fitbit_config():
+    return {
+        "client_id": os.environ.get("FITBIT_CLIENT_ID", "").strip(),
+        "client_secret": os.environ.get("FITBIT_CLIENT_SECRET", "").strip(),
+        "redirect_uri": os.environ.get("FITBIT_REDIRECT_URI", url_for("fitbit_callback", _external=True)).strip(),
+    }
+
+
+def _token_cipher():
+    secret = str(app.secret_key or "change_this_secret_in_prod").encode("utf-8")
+    key = base64.urlsafe_b64encode(hashlib.sha256(secret).digest())
+    return Fernet(key)
+
+
+def _encrypt_token(value):
+    return _token_cipher().encrypt(str(value or "").encode("utf-8")).decode("ascii")
+
+
+def _decrypt_token(value):
+    try:
+        return _token_cipher().decrypt(str(value or "").encode("ascii")).decode("utf-8")
+    except (InvalidToken, ValueError, TypeError):
+        raise ValueError("The saved tracker connection can no longer be unlocked. Reconnect Fitbit.")
+
+
+def _fitbit_token_request(payload):
+    config = fitbit_config()
+    credentials = base64.b64encode(f"{config['client_id']}:{config['client_secret']}".encode("utf-8")).decode("ascii")
+    token_request = urllib.request.Request(
+        "https://api.fitbit.com/oauth2/token",
+        data=urllib.parse.urlencode(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Basic {credentials}",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(token_request, timeout=12) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _fitbit_access_token(uid, conn):
+    c = conn.cursor()
+    c.execute("SELECT * FROM tracker_connections WHERE user_id=? AND provider='fitbit'", (uid,))
+    connection = c.fetchone()
+    if not connection:
+        raise ValueError("Fitbit is not connected.")
+    access_token = _decrypt_token(connection["access_token"])
+    if int(connection["expires_at"] or 0) > int(time.time()) + 90:
+        return access_token, connection
+
+    config = fitbit_config()
+    if not config["client_id"] or not config["client_secret"]:
+        raise ValueError("Fitbit is not configured on this server.")
+    token_data = _fitbit_token_request({
+        "grant_type": "refresh_token",
+        "refresh_token": _decrypt_token(connection["refresh_token"]),
+    })
+    access_token = token_data.get("access_token")
+    refresh_token = token_data.get("refresh_token")
+    if not access_token or not refresh_token:
+        raise ValueError("Fitbit did not refresh the connection. Reconnect Fitbit.")
+    expires_at = int(time.time()) + int(token_data.get("expires_in", 28800))
+    c.execute(
+        """UPDATE tracker_connections
+           SET access_token=?,refresh_token=?,expires_at=?,scope=?,updated_at=CURRENT_TIMESTAMP
+           WHERE user_id=? AND provider='fitbit'""",
+        (_encrypt_token(access_token), _encrypt_token(refresh_token), expires_at,
+         token_data.get("scope", connection["scope"]), uid),
+    )
+    conn.commit()
+    c.execute("SELECT * FROM tracker_connections WHERE user_id=? AND provider='fitbit'", (uid,))
+    return access_token, c.fetchone()
+
+
+def _sync_fitbit(uid, force=False):
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("SELECT * FROM tracker_connections WHERE user_id=? AND provider='fitbit'", (uid,))
+    existing = c.fetchone()
+    if not existing:
+        conn.close()
+        return None
+    if not force and existing["last_synced_at"]:
+        try:
+            last_sync = datetime.fromisoformat(existing["last_synced_at"])
+            if datetime.now() - last_sync < timedelta(minutes=5):
+                c.execute("SELECT * FROM tracker_daily_metrics WHERE user_id=? AND provider='fitbit' AND metric_date=?", (uid, datetime.now().strftime("%Y-%m-%d")))
+                cached = c.fetchone()
+                conn.close()
+                return dict(cached) if cached else None
+        except ValueError:
+            pass
+    try:
+        access_token, _ = _fitbit_access_token(uid, conn)
+        today = datetime.now().strftime("%Y-%m-%d")
+        activity_request = urllib.request.Request(
+            f"https://api.fitbit.com/1/user/-/activities/date/{today}.json",
+            headers={"Authorization": f"Bearer {access_token}", "Accept": "application/json"},
+        )
+        with urllib.request.urlopen(activity_request, timeout=12) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        summary = payload.get("summary") or {}
+        distance = sum(float(item.get("distance", 0) or 0) for item in summary.get("distances", []) if item.get("activity") == "total")
+        active_minutes = sum(int(summary.get(name, 0) or 0) for name in ("lightlyActiveMinutes", "fairlyActiveMinutes", "veryActiveMinutes"))
+        metrics = {
+            "steps": int(summary.get("steps", 0) or 0),
+            "distance": round(distance, 2),
+            "calories": int(summary.get("caloriesOut", 0) or 0),
+            "active_minutes": active_minutes,
+        }
+        c.execute(
+            """INSERT INTO tracker_daily_metrics (user_id,provider,metric_date,steps,distance,calories,active_minutes,synced_at)
+               VALUES (?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+               ON CONFLICT(user_id,provider,metric_date) DO UPDATE SET
+                 steps=excluded.steps,distance=excluded.distance,calories=excluded.calories,
+                 active_minutes=excluded.active_minutes,synced_at=CURRENT_TIMESTAMP""",
+            (uid, "fitbit", today, metrics["steps"], metrics["distance"], metrics["calories"], metrics["active_minutes"]),
+        )
+        c.execute("UPDATE tracker_connections SET last_synced_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND provider='fitbit'", (uid,))
+        conn.commit()
+        return metrics
+    finally:
+        conn.close()
+
+
+@app.route("/auth/fitbit")
+def fitbit_login():
+    uid = session.get("user_id")
+    if not uid:
+        return redirect(url_for("login_page"))
+    config = fitbit_config()
+    if not config["client_id"] or not config["client_secret"]:
+        return redirect(url_for("dashboard_page", tracker_error="Fitbit connection is not configured yet."))
+    state = secrets.token_urlsafe(24)
+    session["fitbit_oauth_state"] = state
+    params = {
+        "response_type": "code",
+        "client_id": config["client_id"],
+        "redirect_uri": config["redirect_uri"],
+        "scope": "activity",
+        "state": state,
+        "expires_in": "31536000",
+    }
+    return redirect("https://www.fitbit.com/oauth2/authorize?" + urllib.parse.urlencode(params))
+
+
+@app.route("/auth/fitbit/callback")
+def fitbit_callback():
+    uid = session.get("user_id")
+    if not uid:
+        return redirect(url_for("login_page"))
+    if request.args.get("error"):
+        return redirect(url_for("dashboard_page", tracker_error="Fitbit connection was cancelled."))
+    state = request.args.get("state")
+    if not state or state != session.pop("fitbit_oauth_state", None):
+        return redirect(url_for("dashboard_page", tracker_error="Fitbit connection could not be verified."))
+    code = request.args.get("code")
+    config = fitbit_config()
+    try:
+        token_data = _fitbit_token_request({
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": config["redirect_uri"],
+        })
+        access_token = token_data.get("access_token")
+        refresh_token = token_data.get("refresh_token")
+        if not access_token or not refresh_token:
+            raise ValueError("Fitbit did not return connection tokens.")
+        expires_at = int(time.time()) + int(token_data.get("expires_in", 28800))
+        conn = get_conn()
+        conn.execute(
+            """INSERT INTO tracker_connections
+               (user_id,provider,provider_user_id,access_token,refresh_token,expires_at,scope,updated_at)
+               VALUES (?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+               ON CONFLICT(user_id,provider) DO UPDATE SET
+                 provider_user_id=excluded.provider_user_id,access_token=excluded.access_token,
+                 refresh_token=excluded.refresh_token,expires_at=excluded.expires_at,
+                 scope=excluded.scope,last_synced_at=NULL,updated_at=CURRENT_TIMESTAMP""",
+            (uid, "fitbit", token_data.get("user_id"), _encrypt_token(access_token),
+             _encrypt_token(refresh_token), expires_at, token_data.get("scope", "activity")),
+        )
+        conn.commit()
+        conn.close()
+        _sync_fitbit(uid, force=True)
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError, ValueError):
+        return redirect(url_for("dashboard_page", tracker_error="Fitbit could not be connected. Please try again."))
+    return redirect(url_for("dashboard_page", tracker="connected"))
+
+
+@app.route("/api/fitbit/status", methods=["GET"])
+def api_fitbit_status():
+    uid = session.get("user_id")
+    if not uid:
+        return jsonify({"status": "error", "message": "Not logged in"}), 401
+    config = fitbit_config()
+    conn = get_conn()
+    row = conn.execute("SELECT last_synced_at FROM tracker_connections WHERE user_id=? AND provider='fitbit'", (uid,)).fetchone()
+    conn.close()
+    return jsonify({"status": "ok", "configured": bool(config["client_id"] and config["client_secret"]),
+                    "connected": bool(row), "last_synced_at": row["last_synced_at"] if row else None})
+
+
+@app.route("/api/fitbit/sync", methods=["POST"])
+def api_fitbit_sync():
+    uid = session.get("user_id")
+    if not uid:
+        return jsonify({"status": "error", "message": "Not logged in"}), 401
+    try:
+        metrics = _sync_fitbit(uid, force=True)
+        if metrics is None:
+            return jsonify({"status": "error", "message": "Connect Fitbit first."}), 400
+        return jsonify({"status": "ok", "metrics": metrics})
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError, ValueError) as error:
+        return jsonify({"status": "error", "message": str(error) or "Fitbit sync failed."}), 502
+
+
+@app.route("/api/fitbit/disconnect", methods=["DELETE"])
+def api_fitbit_disconnect():
+    uid = session.get("user_id")
+    if not uid:
+        return jsonify({"status": "error", "message": "Not logged in"}), 401
+    conn = get_conn()
+    conn.execute("DELETE FROM tracker_connections WHERE user_id=? AND provider='fitbit'", (uid,))
+    conn.execute("DELETE FROM tracker_daily_metrics WHERE user_id=? AND provider='fitbit'", (uid,))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "ok"})
+
 # ---------- Advanced tracking APIs ----------
 def _number(value, default=0, minimum=0):
     try:
@@ -848,6 +1115,10 @@ def api_dashboard_summary():
     if not uid:
         return jsonify({"status": "error", "message": "Not logged in"}), 401
     today = datetime.now().date()
+    try:
+        _sync_fitbit(uid)
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError, ValueError):
+        pass
     start = today - timedelta(days=6)
     conn = get_conn()
     c = conn.cursor()
@@ -857,6 +1128,11 @@ def api_dashboard_summary():
     activities = [dict(row) for row in c.fetchall()]
     c.execute("SELECT * FROM study_goals WHERE user_id=? ORDER BY completed,due_date LIMIT 8", (uid,))
     study = [dict(row) for row in c.fetchall()]
+    c.execute("SELECT steps,distance,calories,active_minutes,synced_at FROM tracker_daily_metrics WHERE user_id=? AND provider='fitbit' AND metric_date=?", (uid, str(today)))
+    tracker_row = c.fetchone()
+    tracker_metrics = dict(tracker_row) if tracker_row else {"steps": 0, "distance": 0, "calories": 0, "active_minutes": 0, "synced_at": None}
+    c.execute("SELECT last_synced_at FROM tracker_connections WHERE user_id=? AND provider='fitbit'", (uid,))
+    tracker_connection = c.fetchone()
     conn.close()
 
     history = []
@@ -878,16 +1154,23 @@ def api_dashboard_summary():
     today_activities = [a for a in activities if a["log_date"] == str(today)]
     def activity_sum(kind, field="value"):
         return sum(float(a[field] or 0) for a in today_activities if a["activity_type"] == kind)
+    manual_steps = activity_sum("steps")
+    manual_calories = sum(float(a["calories"] or 0) for a in today_activities)
+    manual_distance = activity_sum("running") + activity_sum("walking") + activity_sum("cycling")
+    manual_minutes = sum(float(a["duration"] or 0) for a in today_activities)
     summary = {
-        "steps": round(activity_sum("steps")),
-        "calories": round(sum(float(a["calories"] or 0) for a in today_activities)),
-        "distance": round(activity_sum("running") + activity_sum("walking") + activity_sum("cycling"), 2),
-        "active_minutes": round(sum(float(a["duration"] or 0) for a in today_activities)),
+        "steps": round(max(manual_steps, float(tracker_metrics["steps"] or 0))),
+        "calories": round(max(manual_calories, float(tracker_metrics["calories"] or 0))),
+        "distance": round(max(manual_distance, float(tracker_metrics["distance"] or 0)), 2),
+        "active_minutes": round(max(manual_minutes, float(tracker_metrics["active_minutes"] or 0))),
         "study_minutes": round(sum(float(s["studied_minutes"] or 0) for s in study if not s["completed"])),
         "streak": streak,
     }
     return jsonify({"status": "ok", "today": str(today), "goals": [g for g in goals if g["goal_date"] == str(today)],
-                    "activities": today_activities, "study": study, "history": history, "summary": summary})
+                    "activities": today_activities, "study": study, "history": history, "summary": summary,
+                    "tracker": {"connected": bool(tracker_connection), "provider": "fitbit" if tracker_connection else None,
+                                "last_synced_at": tracker_connection["last_synced_at"] if tracker_connection else None,
+                                "metrics": tracker_metrics if tracker_connection else None}})
 
 # Quick utility route to wipe all data for the current user (for testing)
 @app.route("/api/reset_user", methods=["POST"])
@@ -902,6 +1185,8 @@ def api_reset_user():
     c.execute("DELETE FROM daily_goals WHERE user_id=?", (uid,))
     c.execute("DELETE FROM activity_logs WHERE user_id=?", (uid,))
     c.execute("DELETE FROM study_goals WHERE user_id=?", (uid,))
+    c.execute("DELETE FROM tracker_connections WHERE user_id=?", (uid,))
+    c.execute("DELETE FROM tracker_daily_metrics WHERE user_id=?", (uid,))
     conn.commit()
     conn.close()
     return jsonify({"status":"ok"})
